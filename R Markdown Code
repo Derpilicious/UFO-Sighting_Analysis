@@ -1,0 +1,441 @@
+---
+title: "Final Project"
+subtitle: "HTHSCI 1M03 - Foundations of Data Science"
+author: "Roy Luo 400474680"
+date: "2023-04-10"
+output: pdf_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE)
+set.seed(34)
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(knitr)
+library(dplyr)
+library(dslabs)
+library(stringr)
+library(lubridate)
+library(maps)
+library(countrycode)
+library(styler)
+library(scales)
+library(hms)
+```
+# Introduction:
+
+The data we will be analyzing are two datasets ([CSV file 1](https://www.kaggle.com/datasets/NUFORC/ufo-sightings) and [CSV file 2](https://www.kaggle.com/datasets/camnugent/ufo-sightings-around-the-world)) in the form of CSV files from Kaggle concerning UFO spottings around the world. The CSV files includes data such as the time of the spotting, where the spotting took place, descriptions and durations of the encounter, etc. I personally chose this data and topic because I have always found it so interesting that despite there being so many UFO sightings, there still has not been any confirmation of the existence of extra terrestrials. I thus decided to investigate this topic further and come to a conclusion of why that is by trying to find: 
+
++ Which places in the world are more likely to have UFO spottings?
+
+  + Analyzing the locations of UFO sightings can provide insights into the phenomenon of UFOs and the lack of confirmation of extraterrestrial life. This includes identifying geographical patterns of sightings, understanding human perception and reporting bias, investigating potential relationships with military and government installations, studying environmental factors and guiding investigative efforts.
+
++ Do the types and length of UFO spottings vary from place to place?
+
+  + Analyzing the length and type of UFO sightings can help us understand the lack of confirmation of extraterrestrial existence by considering factors such as the quality of evidence, potential for natural or human-made explanations and the need for scientific rigor to prevent a lack of credibility when evaluating the plausibility of potential UFO encounters.
+
++ Are there any other interesting trends to note in historical global UFO spottings? 
+
+  + Finding additional trends in UFO sightings can contribute to our understanding of the lack of confirmation of extraterrestrial existence by examining consistency or inconsistency in patterns, considering human perception and reporting bias and avoiding unwanted assumptions or conlusions. \newpage
+
+# Data Wrangling Plan : File 1
+
+## Iteration 1 
+
+### Phase 1 
++ Read CSV file into R (specify column types)
++ Drop unnecessary columns and duplicate rows
++ Change column names if necessary
++ Identify uids and verify they are unique
++ Sort by uids
+
+### Phase 2
+*Read CSV files into R (specify column types)*
+```{r}
+tib1 <- read_csv("complete.csv", col_types = "cccccicccdd")
+tib1 %>% glimpse()
+```
+```{r, echo = FALSE}
+tib1 %<>% arrange(datetime) %>% filter(!duplicated(datetime))
+```
+*Drop unnecessary columns and duplicate rows*
+```{r}
+tib1 %<>% select(!c("comments", "date posted", "duration (hours/min)"))
+tib1 %<>% distinct()
+```
+*Change column names if necessary*
+
+Let's check the column names.
+```{r}
+tib1 %>% colnames()
+```
+Let's change the column names to something more fitting.
+```{r}
+tib1 %<>% rename("state/province" = "state", "duration" = "duration (seconds)")
+```
+Now let's check that they are renamed.
+```{r}
+tib1 %>% colnames()
+```
+*Identify uids and verify they are unique*
+```{r}
+tib1 %>%
+  count(datetime, country) %>%
+  filter(n > 1)
+```
+We see they are unique as they don't appear more than one.
+
+*Sort by uids*
+```{r}
+tib1 %<>% select(datetime, country, everything()) %>% arrange(datetime, country)
+```
+Let's get a final view of tib1 after our first iteration of changes. We can see the tibble has only relevant columns for our project, no duplicate rows, has a uniform naming convention for columns and is sorted by unique identifiers.
+```{r}
+tib1 %>% glimpse()
+```
+## Iteration 2
+
+### Phase 1
++ Check and clean character columns 
++ Check and clean numeric columns
++ Convert date columns into date datatype
++ Convert appropriate columns into factors
++ Drop NA values
+
+### Phase 2
+*Check and clean character columns*
+
+Let's start with the datetime column and remove all the rows that do not fit the normal date format (month day year hour minute) that is present in that column.
+```{r}
+tib1 %<>% filter(!is.na(mdy_hm(datetime)))
+```
+Now let's see the unique entries in the country column.
+```{r}
+tib1$country %>% unique()
+```
+Let's rename them to lowercase.
+```{r}
+tib1$country %<>% tolower()
+```
+Now let's view the entries in the city column.
+```{r}
+tib1$city %>% glimpse()
+```
+Let's rename the entries to lowercase. We see a lot of the entries end with something in brackets. Let's see what those bracket entries say.
+```{r}
+tib1$city %<>% tolower()
+bracketentries <- str_extract(tib1$city, "\\(.*\\)$")
+bracketentries %>% glimpse()
+```
+We see either it's somewhat irrelevant information, or it contains the name of the country the city is located in. Let's remove the brackets if the text inside does not contain a country using the maps and countrycode libraries, or if the brackets contains the name of the country, let's make the country entry for that row the country in brackets. 
+```{r}
+tib1 %<>% mutate(country = ifelse(is.na(country), str_extract(city, "\\((.*)\\)$"), country))
+tib1 %<>% mutate(country = str_remove_all(country, "\\(|\\)"))
+tib1 %<>% mutate(city = str_replace(city, "\\s*\\(.*?\\)", ""))
+```
+This effectively cleans both the city and country columns. Now let's check one more time to make sure all the entries in the city and country columns are legitimate places, or make them NA otherwise. Let's also turn abbreviations of country names into the actual country names (again using the countrycode library).
+```{r}
+tib1$country %<>% tolower()
+tib1 %<>% mutate(country = ifelse(country %in% tolower(world.cities$country) |
+  country %in% tolower(codelist$iso2c), country, NA))
+tib1 %<>% mutate(city = ifelse(city %in% tolower(world.cities$name), city, NA))
+tib1 %<>% mutate(country = countryname(country, destination = tolower("country.name.en")))
+```
+Let's do the same thing for the state column.
+```{r}
+tib1$`state/province` %>% unique()
+```
+It looks good. Now let's check the last character column which is the shape column.
+```{r}
+tib1$shape %>% table()
+```
+Some of these entries look similar so let's adjust them so they match better.
+```{r}
+tib1 %<>% mutate(shape = ifelse(shape == "changing", "changed", shape))
+tib1 %<>% mutate(shape = ifelse(shape == "flare", "fireball", shape))
+tib1 %<>% mutate(shape = ifelse(shape == "round", "sphere", shape))
+tib1 %<>% mutate(shape = ifelse(shape == "pyramid", "triangle", shape))
+tib1 %<>% mutate(shape = ifelse(shape == "delta", "chevron", shape))
+tib1 %<>% mutate(shape = ifelse(shape == "dome", "other", shape))
+tib1 %<>% mutate(shape = ifelse(shape == "hexagon", "other", shape))
+tib1 %<>% mutate(shape = ifelse(shape == "flash", "light", shape))
+tib1 %<>% mutate(shape = ifelse(shape == "crescent", "other", shape))
+tib1$shape %>% table()
+```
+We can see now all the different shapes of UFO spottings are now part of common categories or the other category.
+
+*Check and clean numeric columns*
+
+Let's mutate the duration column into an integer data type.
+```{r}
+tib1 %<>% mutate(duration = as.integer(duration))
+```
+Let's get rid of outliers in this data.
+```{r}
+Q1 <- quantile(tib1$duration, 0.25, na.rm = T)
+Q3 <- quantile(tib1$duration, 0.75, na.rm = T)
+IQR <- Q3 - Q1
+tib1 %<>% filter(duration >= Q1 - 1.5 * IQR, duration <= Q3 + 1.5 * IQR)
+```
+Now let's check the latitude and longitude columns. Let's first make sure they are within the correct bounds.
+```{r}
+tib1 %<>% filter(latitude >= -90, latitude <= 90, longitude >= -180, longitude <= 180)
+```
+Now let's make sure all the values of longitude and latitude that have 0 as their values are assigned to NA (it's extremely unlikely all those UFO spottings happen at some arbitrary point above the Atlantic Ocean).
+```{r}
+tib1 %<>% mutate(latitude = ifelse(latitude == 0 & longitude == 0, NA, latitude))
+tib1 %<>% mutate(longitude = ifelse(latitude == 0 & longitude == 0, NA, longitude))
+```
+*Convert date columns into data datatype*
+
+Let's convert datetime to a dttm datatype.
+```{r}
+tib1 %<>% mutate(datetime = as.POSIXct(.$datetime, format = "%m/%d/%Y %H:%M"))
+```
+*Convert appropriate columns into factors*
+
+Let's convert the appropriate character columns into factors.
+```{r}
+tib1 %<>% mutate(shape = as.factor(shape))
+tib1 %<>% mutate(city = as.factor(city))
+tib1 %<>% mutate(country = as.factor(country))
+tib1 %<>% mutate(`state/province` = as.factor(`state/province`))
+```
+*Drop NA values*
+```{r}
+tib1 %<>% drop_na()
+tib1 %>% glimpse()
+```
+This is our final tib1. We can see now the columns are the appropriate data type, have only clean data and no NA values. Note that the initial CSV file was already in tidy format so we do not need to pivot the data into long format.
+
+# Data Wrangling Plan : File 2
+
+## Iteration 1 
+
+### Phase 1 
++ Read CSV file into R (specify column types)
++ Drop unnecessary columns and duplicate rows
++ Change column names if necessary
++ Identify uids and verify they are unique
++ Sort by uids
+
+### Phase 2
+*Read CSV files into R (specify column types)*
+```{r}
+tib2 <- read_csv("ufo_sighting_data.csv", col_types = "cccccicccdd")
+tib2 %>% glimpse()
+```
+```{r, echo = FALSE}
+tib2 %<>% arrange(Date_time) %>% filter(!duplicated(Date_time))
+```
+*Drop unnecessary columns and duplicate rows*
+```{r}
+tib2 %<>% select(!c("description", "date_documented", "described_duration_of_encounter"))
+tib2 %<>% distinct()
+```
+*Change column names if necessary*
+
+Let's first rename all the column names to lower case.
+```{r}
+tib2 %<>% rename_with(tolower)
+```
+Let's check the column names.
+```{r}
+tib2 %>% colnames()
+```
+Let's change the column names to something more fitting.
+```{r}
+tib2 %<>% rename("datetime" = "date_time", "shape" = "ufo_shape", "duration" = "length_of_encounter_seconds")
+```
+Now let's check that they are renamed.
+```{r}
+tib2 %>% colnames()
+```
+*Identify uids and verify they are unique*
+```{r}
+tib2 %>%
+  count(datetime, country) %>%
+  filter(n > 1)
+```
+We see they are unique as they don't appear more than one.
+
+*Sort by uids*
+```{r}
+tib2 %<>% select(datetime, country, everything()) %>% arrange(datetime, country)
+```
+Let's get a final view of tib2 after our first iteration of changes. We can see the tibble has only relevant columns for our project, no duplicate rows, has a uniform naming convention for columns and is sorted by unique identifiers.
+```{r}
+tib2 %>% glimpse()
+```
+
+## Iteration 2
+
+### Phase 1
++ Check and clean character columns 
++ Check and clean numeric columns
++ Convert date columns into date datatype
++ Convert appropriate columns into factors
++ Drop NA values
++ Join tib1 and tib2
+
+### Phase 2
+*Check and clean character columns*
+
+Let's start with the datetime column and remove all the rows that do not fit the normal date format (month day year hour minute) that is present in that column.
+```{r}
+tib2 %<>% filter(!is.na(mdy_hm(datetime)))
+```
+Now let's see the unique entries in the country column.
+```{r}
+tib2$country %>% unique()
+```
+Let's rename them to lowercase.
+```{r}
+tib2$country %<>% tolower()
+```
+Now let's view the entries in the city column.
+```{r}
+tib2$city %>% glimpse()
+```
+Let's rename the entries to lowercase. We see a lot of the entries end with something in brackets. Let's see what those bracket entries say.
+```{r}
+tib2$city %<>% tolower()
+bracketentries <- str_extract(tib2$city, "\\(.*\\)$")
+bracketentries %>% glimpse()
+```
+We see either it's somewhat irrelevant information, or it contains the name of the country the city is located in. Let's remove the brackets if the text inside does not contain a country using the maps and countrycode libraries, or if the brackets contains the name of the country, let's make the country entry for that row the country in brackets. 
+```{r}
+tib2 %<>% mutate(country = ifelse(is.na(country), str_extract(city, "\\((.*)\\)$"), country))
+tib2 %<>% mutate(country = str_remove_all(country, "\\(|\\)"))
+tib2 %<>% mutate(city = str_replace(city, "\\s*\\(.*?\\)", ""))
+```
+This effectively cleans both the city and country columns. Now let's check one more time to make sure all the entries in the city and country columns are legitimate places, or make them NA otherwise. Let's also turn abbreviations of country names into the actual country names (again using the countrycode library).
+```{r}
+tib2$country %<>% tolower()
+tib2 %<>% mutate(country = ifelse(country %in% tolower(world.cities$country) |
+  country %in% tolower(codelist$iso2c), country, NA))
+tib2 %<>% mutate(city = ifelse(city %in% tolower(world.cities$name), city, NA))
+tib2 %<>% mutate(country = countryname(country, destination = tolower("country.name.en")))
+```
+Let's do the same thing for the state column.
+```{r}
+tib2$`state/province` %>% unique()
+```
+It looks good. Now let's check the last character column which is the shape column.
+```{r}
+tib2$shape %>% table()
+```
+Some of these entries look similar so let's adjust them so they match better.
+```{r}
+tib2 %<>% mutate(shape = ifelse(shape == "changing", "changed", shape))
+tib2 %<>% mutate(shape = ifelse(shape == "flare", "fireball", shape))
+tib2 %<>% mutate(shape = ifelse(shape == "round", "sphere", shape))
+tib2 %<>% mutate(shape = ifelse(shape == "pyramid", "triangle", shape))
+tib2 %<>% mutate(shape = ifelse(shape == "delta", "chevron", shape))
+tib2 %<>% mutate(shape = ifelse(shape == "dome", "other", shape))
+tib2 %<>% mutate(shape = ifelse(shape == "hexagon", "other", shape))
+tib2 %<>% mutate(shape = ifelse(shape == "flash", "light", shape))
+tib2 %<>% mutate(shape = ifelse(shape == "crescent", "other", shape))
+tib2$shape %>% table()
+```
+We can see now all the different shapes of UFO spottings are now part of common categories or the other category.
+
+*Check and clean numeric columns*
+
+Let's mutate the duration column into an integer data type.
+```{r}
+tib2 %<>% mutate(duration = as.integer(duration))
+```
+Let's get rid of outliers in this data.
+```{r}
+Q1 <- quantile(tib2$duration, 0.25, na.rm = T)
+Q3 <- quantile(tib2$duration, 0.75, na.rm = T)
+IQR <- Q3 - Q1
+tib2 %<>% filter(duration >= Q1 - 1.5 * IQR, duration <= Q3 + 1.5 * IQR)
+```
+Now let's check the latitude and longitude columns. Let's first make sure they are within the correct bounds.
+```{r}
+tib2 %<>% filter(latitude >= -90, latitude <= 90, longitude >= -180, longitude <= 180)
+```
+Now let's make sure all the values of longitude and latitude that have 0 as their values are assigned to NA (it's extremely unlikely all those UFO spottings happen at some arbitrary point above the Atlantic Ocean).
+```{r}
+tib2 %<>% mutate(latitude = ifelse(latitude == 0 & longitude == 0, NA, latitude))
+tib2 %<>% mutate(longitude = ifelse(latitude == 0 & longitude == 0, NA, longitude))
+```
+*Convert date columns into data datatype*
+
+Let's convert datetime to a dttm datatype and also make a new column called time that only contains the time and not date so that we can use it for plotting and data visualization.
+```{r}
+tib2 %<>% mutate(datetime = as.POSIXct(.$datetime, format = "%m/%d/%Y %H:%M"))
+```
+*Convert appropriate columns into factors*
+
+Let's convert the appropriate character columns into factors.
+```{r}
+tib2 %<>% mutate(shape = as.factor(shape))
+tib2 %<>% mutate(city = as.factor(city))
+tib2 %<>% mutate(country = as.factor(country))
+tib2 %<>% mutate(`state/province` = as.factor(`state/province`))
+```
+*Drop NA values*
+```{r}
+tib2 %<>% drop_na()
+```
+*Join tib1 and tib2*
+
+Let's also make sure to get rid of duplicate rows from the two tibbles.
+```{r}
+tib <- bind_rows(tib1, tib2)
+tib %<>% distinct()
+```
+This is our final tibble. We can see the join worked, and it is now ready to use for data visualization.\newpage
+
+# Results/Discussion
+```{r}
+p1 <- tib %>% ggplot(aes(x = country, fill = country)) +
+  geom_bar() +
+  labs(x = "Country", y = "Number of Spottings", title = "Number of Spottings per Country") +
+  scale_y_continuous(trans = "log10") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+p1
+```
+The first thing I immediately wanted to find out is what country had the most UFO spottings. This plot shows that U.S.A has by far the most UFO spottings out of any other country in the world. Perhaps this could be due to factors such as its larger population and land area, technological advancement in aviation and space exploration, a strong media and popular culture that features stories about UFOs, and a reporting culture that encourages and collects reports of unusual phenomena. While not all UFO sightings are evidence of extraterrestrial activity as there are often natural or man-made explanations for them, it was still interesting to see the vast majority of the world's UFO spottings happen to the United States. \newpage
+
+```{r}
+topshapes <- tib %>% 
+  group_by(shape) %>% 
+  summarize(count = n()) %>% 
+  arrange(desc(count)) %>% 
+  head(5) %>%
+  ungroup()
+p2 <- tib %>% 
+  filter(shape %in% topshapes$shape) %>%
+  ggplot(aes(x=duration, y= shape)) +
+  geom_boxplot(notch = T) +
+  geom_rug() +
+  geom_violin() +
+  labs(x = "Duration of encounter (seconds)", y = "Shape of UFO", title = "Shape of UFO and Duration of Encounter") +
+  theme_minimal()
+p2
+```
+We can see that despite there being a multitude of shapes that UFOs are described as, the duration that they are spotted for is often quite short. We can see that even the 5 most common shapes that UFOs are described as often still are not seen for a very long time. These sightings could be brief because UFOs are typically unknown and unfamiliar objects that can appear suddenly, move quickly, and exhibit unusual behavior. Since they are often seen at a distance or high altitudes in the sky, it would be difficult for the naked human eye to track or observe them. Human perception and attention, reporting delays and other explanations could also contribute to the rarity of UFO sightings. \newpage
+
+```{r}
+p3 <- tib %>% mutate(time = as_hms(datetime)) %>%
+  group_by(time) %>%
+  mutate(n = n()) %>%
+  ungroup() %>%
+  ggplot(aes(x = time, y=n)) +
+  geom_line() +
+  labs(x = "Time", y = "Spottings", title = "Time of Day of UFO Spottings") +
+  scale_x_time(breaks = as.hms(c('0:00:00','2:00:00', '4:00:00','6:00:00', '8:00:00','10:00:00', '12:00:00','14:00:00', '16:00:00', '18:00:00', '20:00:00','22:00:00'), labels = label_time(format = '%H'))) +
+  theme_minimal() +
+  theme(axis.text.x=element_text(angle = 45)) 
+p3
+```
+We can see that the majority of UFO spottings happen during the later hours of the day when it is likely dark outside. This is likely due to reduced visibility, altered human perception, cultural factors, and reporting bias that contributes to an increased likelihood of noticing unusual lights or objects in the sky, and interpreting them as UFOs. If those same encounters happened during the daytime where natural light is plentiful, I would believe that many UFO spottings would instead be planes or clouds or other hallucinations the human mind makes up due to the lack of light. \newpage 
+
+# Conclusion
+
+Despite the large number of reported UFO sightings from around the world, there are several reasons why conclusive proof of extraterrestrial existence has not been found yet. We have even shown that UFO spottings can be attributed to various factors. Many sightings can be explained by natural phenomena or ordinary objects, human perception, reduced visibility at night, cultural influences, and reporting bias. Additionally, cultural beliefs and media portrayals of UFOs, as well as reporting bias, can shape people's expectations and interpretations of sightings. Even how short and brief the vast majority of encounters are speak to how untrustworthy a human's account of a UFO spotting really is. We have found patterns in where these spottings take place, the duration and shape of these spottings and even the time of day of when people see them, yet all of these point out to us that it is far more likely than not that these UFO spottings can be chalked up to rational and logical explanations instead of definitive proof of extraterrestrials.
