@@ -38,18 +38,6 @@ The data we will be analyzing are two datasets ([CSV file 1](https://www.kaggle.
 
   + Finding additional trends in UFO sightings can contribute to our understanding of the lack of confirmation of extraterrestrial existence by examining consistency or inconsistency in patterns, considering human perception and reporting bias and avoiding unwanted assumptions or conlusions. \newpage
 
-# Data Wrangling Plan : File 1
-
-## Iteration 1 
-
-### Phase 1 
-+ Read CSV file into R (specify column types)
-+ Drop unnecessary columns and duplicate rows
-+ Change column names if necessary
-+ Identify uids and verify they are unique
-+ Sort by uids
-
-### Phase 2
 *Read CSV files into R (specify column types)*
 ```{r}
 tib1 <- read_csv("complete.csv", col_types = "cccccicccdd")
@@ -93,16 +81,6 @@ Let's get a final view of tib1 after our first iteration of changes. We can see 
 ```{r}
 tib1 %>% glimpse()
 ```
-## Iteration 2
-
-### Phase 1
-+ Check and clean character columns 
-+ Check and clean numeric columns
-+ Convert date columns into date datatype
-+ Convert appropriate columns into factors
-+ Drop NA values
-
-### Phase 2
 *Check and clean character columns*
 
 Let's start with the datetime column and remove all the rows that do not fit the normal date format (month day year hour minute) that is present in that column.
@@ -208,18 +186,6 @@ tib1 %>% glimpse()
 ```
 This is our final tib1. We can see now the columns are the appropriate data type, have only clean data and no NA values. Note that the initial CSV file was already in tidy format so we do not need to pivot the data into long format.
 
-# Data Wrangling Plan : File 2
-
-## Iteration 1 
-
-### Phase 1 
-+ Read CSV file into R (specify column types)
-+ Drop unnecessary columns and duplicate rows
-+ Change column names if necessary
-+ Identify uids and verify they are unique
-+ Sort by uids
-
-### Phase 2
 *Read CSV files into R (specify column types)*
 ```{r}
 tib2 <- read_csv("ufo_sighting_data.csv", col_types = "cccccicccdd")
@@ -268,17 +234,6 @@ Let's get a final view of tib2 after our first iteration of changes. We can see 
 tib2 %>% glimpse()
 ```
 
-## Iteration 2
-
-### Phase 1
-+ Check and clean character columns 
-+ Check and clean numeric columns
-+ Convert date columns into date datatype
-+ Convert appropriate columns into factors
-+ Drop NA values
-+ Join tib1 and tib2
-
-### Phase 2
 *Check and clean character columns*
 
 Let's start with the datetime column and remove all the rows that do not fit the normal date format (month day year hour minute) that is present in that column.
